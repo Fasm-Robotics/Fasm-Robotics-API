@@ -30,16 +30,39 @@ if ($selectedPort) {
     $portID = ($selectedPort -split '\s+')[0]
 
     $command = "usbipd attach --wsl --busid=$portID; Read-Host -Prompt 'Appuyez sur Entrée pour continuer...'"
-
     Write-Host "Exécution de la commande en tant qu'administrateur : $command"
-    Start-Process powershell -ArgumentList "-NoProfile -Command $command" -Verb RunAs
+
+    # Attente de la fin de Start-Process
+    $process = Start-Process powershell -ArgumentList "-NoProfile -Command $command" -Verb RunAs -Wait -PassThru
+    if ($process.ExitCode -ne 0) {
+        Write-Error "Erreur lors de l'exécution de la commande en mode administrateur."
+        exit 1
+    }
 } else {
     Write-Output "Aucun port USB ne correspond au mot-clé spécifié."
+    exit 1
 }
 
 Write-Host "Lancement du conteneur $containerName..."
-docker run --rm -d --device=/dev/ttyUSB0:/dev/ttyUSB0 --name $containerName $dockerImageName
+# Récupération de l'ID du conteneur lancé
+$containerID = docker run --rm -d -p 5000:5000 --device=/dev/ttyUSB0:/dev/ttyUSB0 --name $containerName $dockerImageName
 
-Write-Host "Conteneur lancé avec succès. Nom: $containerName"
+if (!$containerID) {
+    Write-Error "Erreur lors du lancement du conteneur Docker."
+    exit 1
+}
 
-Read-Host -Prompt "Appuyez sur Entrée pour continuer..."
+Write-Host "Conteneur lancé avec succès. Nom: $containerName, ID: $containerID"
+
+try {
+    Write-Host "Affichage des logs du conteneur (Appuyez sur Ctrl+C pour arrêter les logs)..."
+    # Démarre `docker logs --follow` dans un nouveau processus
+    Start-Process -NoNewWindow -Wait powershell -ArgumentList "docker logs --follow $containerID"
+} catch {
+    Write-Warning "Interruption des logs détectée. Fermeture des ressources..."
+} finally {
+    Write-Host "Arrêt du conteneur Docker et détachement du port USB..."
+    docker stop $containerID
+    usbipd detach --busid=$portID
+    Write-Host "Ressources libérées avec succès."
+}
