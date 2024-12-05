@@ -13,7 +13,7 @@ if (Test-Path $cloneDir) {
 }
 
 Write-Host "Recuperation de l'image Docker $dockerImageName..."
-docker pull fasmrobotics/api-arduino
+docker pull fasmrobotics/releases-api-arduino:latest
 
 Write-Host "Obtention de la liste des ports USB disponibles..."
 $output = usbipd list
