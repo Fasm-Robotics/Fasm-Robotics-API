@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  Build and push image to Docker Hub:
+  Release_image_to_Docker_Hub:
     runs-on: ubuntu-latest
     steps:
       -
