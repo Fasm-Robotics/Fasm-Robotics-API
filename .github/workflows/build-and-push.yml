@@ -1,6 +1,8 @@
 name: Build and Push Docker Image
-
 on:
+  push:
+    branches:
+      - dev
   pull_request:
     branches:
       - main
@@ -31,4 +33,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ vars.DOCKER_USERNAME }}/releases-api-arduino:latest
+          tags: ${{ vars.DOCKER_USERNAME }}/dev-api-arduino:latest
