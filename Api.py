@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from lib import MotorController
+from lib import Controller, MotorName
 
 # Initialisation de l'application FastAPI
 app = FastAPI()
@@ -20,8 +20,11 @@ async def connect_arduino(port: str = "COM3", baudrate: int = 9600):
     try:
         if is_connected:
             return {"status": "success", "message": "Arduino déjà connecté."}
-        arduino = MotorController(port=port, baudrate=baudrate)
-        arduino.connect()
+        ctrl = Controller(port=port, baudrate=baudrate)
+        ctrl.add_motor("3078385E3533", MotorName.SH1)
+        ctrl.add_motor("376233523433", MotorName.SH2)
+        ctrl.add_motor("376433673433", MotorName.SH3)
+        ctrl.init()
         is_connected = True
         return {
             "status": "success",
@@ -36,115 +39,60 @@ async def disconnect_arduino():
     """
     Déconnecte l'Arduino du port série.
     """
-    global arduino, is_connected
+    global ctrl, is_connected
     try:
         if not is_connected:
             return {"status": "success", "message": "Arduino déjà déconnecté."}
-        arduino.disconnect()
+        ctrl.exit()
         is_connected = False
         return {"status": "success", "message": "Connexion à l'Arduino fermée."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de la déconnexion : {e}")
 
 
-@app.post("/motor1/update")
-async def update_motor1(angle: float):
+@app.post("/set-angle")
+async def set_angle(motor: str, angle: float):
     """
-    Met à jour l'angle du moteur 1.
+    Met à jour l'angle du moteur "motor".
     """
     if not is_connected:
         raise HTTPException(status_code=400, detail="Arduino non connecté.")
     try:
-        response = arduino.update_motor1(angle)
+        if motor not in MotorName.__members__:
+            raise ValueError("Nom de moteur invalide.")
+        response = ctrl.get_motor(motor).set_angle(angle)
         return {"status": "success", "response": response}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@app.post("/motor2/update")
-async def update_motor2(angle: float):
+@app.get("/get-angle")
+async def get_angle(motor: str):
     """
-    Met à jour l'angle du moteur 2.
-    """
-    if not is_connected:
-        raise HTTPException(status_code=400, detail="Arduino non connecté.")
-    try:
-        response = arduino.update_motor2(angle)
-        return {"status": "success", "response": response}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/motor3/update")
-async def update_motor3(angle: float):
-    """
-    Met à jour l'angle du moteur 3.
+    Récupère l'angle actuel du moteur "motor".
     """
     if not is_connected:
         raise HTTPException(status_code=400, detail="Arduino non connecté.")
     try:
-        response = arduino.update_motor3(angle)
-        return {"status": "success", "response": response}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/motor1")
-async def get_motor1():
-    """
-    Récupère l'angle actuel du moteur 1.
-    """
-    if not is_connected:
-        raise HTTPException(status_code=400, detail="Arduino non connecté.")
-    try:
-        angle = arduino.get_motor1()
+        if motor not in MotorName.__members__:
+            raise ValueError("Nom de moteur invalide.")
+        angle = ctrl.get_motor(motor).get_angle()
         return {"status": "success", "motor": "motor1", "angle": angle}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/motor2")
-async def get_motor2():
+    
+@app.post("/reboot")
+async def reboot(motor: str = None):
     """
-    Récupère l'angle actuel du moteur 2.
-    """
-    if not is_connected:
-        raise HTTPException(status_code=400, detail="Arduino non connecté.")
-    try:
-        angle = arduino.get_motor2()
-        return {"status": "success", "motor": "motor2", "angle": angle}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/motor3")
-async def get_motor3():
-    """
-    Récupère l'angle actuel du moteur 3.
+    Redémarre le moteur spécifié ou tous les moteurs.
     """
     if not is_connected:
         raise HTTPException(status_code=400, detail="Arduino non connecté.")
     try:
-        angle = arduino.get_motor3()
-        return {"status": "success", "motor": "motor3", "angle": angle}
+        ctrl.reboot(motor)
+        return {"status": "success", "message": "Redémarrage effectué."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/reset")
-async def reset_motors():
-    """
-    Réinitialise les angles des moteurs.
-    """
-    if not is_connected:
-        raise HTTPException(status_code=400, detail="Arduino non connecté.")
-    try:
-        arduino.reset_motors()
-        return {"status": "success", "message": "Les moteurs ont été réinitialisés."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    uvicorn.run(app, host="localhost", port=5000)
