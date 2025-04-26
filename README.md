@@ -1,28 +1,10 @@
-# Fasm Robotics
+# API Robot Arm – Contrôle du bras robotique Arduino
 
-#TODO : Description du projet.
+Cette API (développée avec FastAPI) permet de contrôler un bras robotisé piloté par une carte Arduino. Elle expose différentes routes HTTP pour se connecter au bras, déplacer ses moteurs, effectuer des calibrations, etc. Toutes les données d'angle sont exprimées en **degrés**.
 
-## Table des matières
+## Lancement de l'API
 
-1. [Prérequis](#prérequis)  
-2. [Installation](#installation)  
-3. [Utilisation](#utilisation)  
-4. [Contribuer](#contribuer)  
-5. [Licence](#licence)  
+Assurez-vous d'avoir Python 3 installé ainsi que les dépendances nécessaires (`fastapi`, `uvicorn`, etc.). Pour démarrer le serveur de l'API, exécutez la commande suivante :
 
----
-
-## Prérequis
-
-#TODO : Décrire les prérequis pour installer et utiliser le projet.
-
-## Installation
-
-#TODO : Décrire comment installer le projet.
-
-## Authors
-
-- [@Babix231](https://github.com/Babix231)
-- [@AristideL](https://github.com/AristideL)
-- [@Mmr57190](https://github.com/Mmr57190)
-- [@Moh](https://github.com/mohsine-f)
+```bash
+uvicorn main:app --reload

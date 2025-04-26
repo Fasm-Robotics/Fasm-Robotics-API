@@ -1,97 +1,192 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict
 from lib import Controller, MotorName
+from fastapi.middleware.cors import CORSMiddleware
+import os
 
-# Initialisation de l'application FastAPI
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:4200"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Initialisation du contrôleur Arduino (sans connexion initiale)
-arduino = None
-
-# État de la connexion
+# --- Variables globales ---
+ctrl: Optional[Controller] = None
 is_connected = False
 
+# --- Chemin du URDF ---
+current_dir = os.path.dirname(__file__)
+urdf_path = os.path.join(current_dir, "robotarm_corrected.urdf")
 
+# --- Modèles Pydantic ---
+class ConnectRequest(BaseModel):
+    port: str = "COM5"
+    baudrate: int = 115200
+
+class SetMotorAngleRequest(BaseModel):
+    motor: str
+    angle: float
+
+class SetSyncAnglesRequest(BaseModel):
+    angles: Dict[str, float]
+
+class MotorStateRequest(BaseModel):
+    motor: str
+
+class CalibrateRequest(BaseModel):
+    motor: str
+
+class CalibrateSyncRequest(BaseModel):
+    motors: List[str]
+
+class PositionInput(BaseModel):
+    x: float
+    y: float
+    z: float
+
+# --- Routes API ---
 @app.post("/connect")
-async def connect_arduino(port: str = "COM3", baudrate: int = 9600):
-    """
-    Connecte l'Arduino via le port série avec un port et un baudrate spécifiés.
-    """
-    global arduino, is_connected
+async def connect_arduino(req: ConnectRequest):
+    global ctrl, is_connected
     try:
         if is_connected:
-            return {"status": "success", "message": "Arduino déjà connecté."}
-        ctrl = Controller(port=port, baudrate=baudrate)
-        ctrl.add_motor("3078385E3533", MotorName.SH1)
-        ctrl.add_motor("376233523433", MotorName.SH2)
-        ctrl.add_motor("376433673433", MotorName.SH3)
-        ctrl.init()
+            return {"status": "success", "message": "Déjà connecté."}
+        ctrl = Controller(port=req.port, urdf_path=urdf_path)
         is_connected = True
-        return {
-            "status": "success",
-            "message": f"Connexion à l'Arduino établie sur {port} à {baudrate} bauds.",
-        }
+        return {"status": "success", "message": f"Connecté à {req.port}."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur lors de la connexion : {e}")
-
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/disconnect")
 async def disconnect_arduino():
-    """
-    Déconnecte l'Arduino du port série.
-    """
     global ctrl, is_connected
     try:
         if not is_connected:
-            return {"status": "success", "message": "Arduino déjà déconnecté."}
-        ctrl.exit()
+            return {"status": "success", "message": "Déjà déconnecté."}
+        ctrl = None
         is_connected = False
-        return {"status": "success", "message": "Connexion à l'Arduino fermée."}
+        return {"status": "success", "message": "Déconnecté avec succès."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur lors de la déconnexion : {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/reverseK")
+async def compute_inverse_kinematics(pos: PositionInput):
+    if not is_connected:
+        raise HTTPException(status_code=400, detail="Arduino non connecté.")
+    try:
+        angles_deg = ctrl.goto(pos.x, pos.y, pos.z)
+        return {"status": "success", "angles_degrees": {k.name: v for k, v in angles_deg.items()}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/set-angle")
-async def set_angle(motor: str, angle: float):
-    """
-    Met à jour l'angle du moteur "motor".
-    """
+@app.post("/set-motor-angle")
+async def set_motor_angle(req: SetMotorAngleRequest):
+    if not is_connected:
+        raise HTTPException(status_code=400, detail="Arduino non connecté.")
+    try:
+        if req.motor not in MotorName.__members__:
+            raise ValueError("Nom de moteur invalide.")
+        motor_enum = MotorName[req.motor]
+        ctrl.set_motor_angle(motor_enum, req.angle)
+        return {"status": "success", "message": f"{req.motor} déplacé à {req.angle} degrés"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/set-sync-angles")
+async def set_sync_angles(req: SetSyncAnglesRequest):
+    if not is_connected:
+        raise HTTPException(status_code=400, detail="Arduino non connecté.")
+    try:
+        angles = {}
+        for name, angle in req.angles.items():
+            if name not in MotorName.__members__:
+                raise ValueError(f"Moteur invalide : {name}")
+            angles[MotorName[name]] = angle
+        ctrl.set_motors_angles(angles)
+        return {"status": "success", "message": "Angles synchronisés."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/get-motor-angle")
+async def get_motor_angle(motor: str = Query(..., description="Nom du moteur (SH1, SH2, SH3, EL1)")):
     if not is_connected:
         raise HTTPException(status_code=400, detail="Arduino non connecté.")
     try:
         if motor not in MotorName.__members__:
             raise ValueError("Nom de moteur invalide.")
-        response = ctrl.get_motor(motor).set_angle(angle)
-        return {"status": "success", "response": response}
+        motor_enum = MotorName[motor]
+        angles = ctrl.arduino.get_latest_position({motor_enum: 0})
+        if angles[motor_enum] is None:
+            raise ValueError("Erreur de lecture de la position.")
+        return {"status": "success", "angle_degrees": angles[motor_enum]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/get-angle")
-async def get_angle(motor: str):
-    """
-    Récupère l'angle actuel du moteur "motor".
-    """
+@app.post("/calibrate")
+async def calibrate_motor(req: CalibrateRequest):
     if not is_connected:
         raise HTTPException(status_code=400, detail="Arduino non connecté.")
     try:
-        if motor not in MotorName.__members__:
+        if req.motor not in MotorName.__members__:
             raise ValueError("Nom de moteur invalide.")
-        angle = ctrl.get_motor(motor).get_angle()
-        return {"status": "success", "motor": "motor1", "angle": angle}
+        ctrl.calibrate(MotorName[req.motor])
+        return {"status": "success", "message": f"Moteur {req.motor} calibré."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+@app.post("/calibrate-sync")
+async def calibrate_sync(req: CalibrateSyncRequest):
+    if not is_connected:
+        raise HTTPException(status_code=400, detail="Arduino non connecté.")
+    try:
+        motors = {MotorName[name]: 0.0 for name in req.motors if name in MotorName.__members__}
+        ctrl.arduino.calibrate(motors)
+        return {"status": "success", "message": f"Calibration sync réussie pour {', '.join(req.motors)}."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/set-closed-loop")
+async def set_closed_loop(req: MotorStateRequest):
+    if not is_connected:
+        raise HTTPException(status_code=400, detail="Arduino non connecté.")
+    try:
+        if req.motor not in MotorName.__members__:
+            raise ValueError("Nom de moteur invalide.")
+        ctrl.arduino.set_closed_loop({MotorName[req.motor]: 0})
+        return {"status": "success", "message": f"{req.motor} en boucle fermée."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/set-idle")
+async def set_idle(req: MotorStateRequest):
+    if not is_connected:
+        raise HTTPException(status_code=400, detail="Arduino non connecté.")
+    try:
+        if req.motor not in MotorName.__members__:
+            raise ValueError("Nom de moteur invalide.")
+        ctrl.arduino.set_idle({MotorName[req.motor]: 0})
+        return {"status": "success", "message": f"{req.motor} mis en IDLE."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/reboot")
-async def reboot(motor: str = None):
-    """
-    Redémarre le moteur spécifié ou tous les moteurs.
-    """
-    if not is_connected:
-        raise HTTPException(status_code=400, detail="Arduino non connecté.")
-    try:
-        ctrl.reboot(motor)
-        return {"status": "success", "message": "Redémarrage effectué."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def reboot():
+    return {"status": "success", "message": "Reboot fictif réussi."}
+
+@app.get("/status")
+def get_status():
+    """Retourne l'état de connexion de l'Arduino."""
+    return {"is_connected": ctrl.is_connected()}
+
+@app.post("/reset")
+def reset_arm():
+    """Réinitialise les moteurs et la position XYZ du bras à (0, 0, 0)."""
+    ctrl.reset()
+    return {"message": "Réinitialisation effectuée."}
 
 if __name__ == "__main__":
     import uvicorn

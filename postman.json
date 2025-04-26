@@ -1,0 +1,346 @@
+{
+    "info": {
+      "_postman_id": "79891ca0-1810-4838-915b-5bbb53cb4900",
+      "name": "Robot Arm API",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+      {
+        "name": "Connect",
+        "request": {
+          "method": "POST",
+          "header": [],
+          "url": {
+            "raw": "http://localhost:8000/connect",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "connect"
+            ]
+          },
+          "description": "Connecte le bras robotique en initialisant la connexion Arduino (exemple de port COM).",
+          "body": {
+            "mode": "raw",
+            "raw": "{\n    \"port\": \"COM3\"\n}",
+            "options": {
+              "raw": {
+                "language": "json"
+              }
+            }
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Disconnect",
+        "request": {
+          "method": "POST",
+          "header": [],
+          "url": {
+            "raw": "http://localhost:8000/disconnect",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "disconnect"
+            ]
+          },
+          "description": "Coupe la connexion avec le bras robotique.",
+          "body": {
+            "mode": "raw",
+            "raw": "{\n    \n}",
+            "options": {
+              "raw": {
+                "language": "json"
+              }
+            }
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Status",
+        "request": {
+          "method": "GET",
+          "header": [],
+          "url": {
+            "raw": "http://localhost:8000/status",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "status"
+            ]
+          },
+          "description": "Renvoie l'état de connexion du bras (Arduino connecté ou non)."
+        },
+        "response": []
+      },
+      {
+        "name": "Reset",
+        "request": {
+          "method": "POST",
+          "header": [],
+          "url": {
+            "raw": "http://localhost:8000/reset",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "reset"
+            ]
+          },
+          "description": "Réinitialise le bras (moteurs à 0, position XYZ à (0,0,0)).",
+          "body": {
+            "mode": "raw",
+            "raw": "{\n    \n}",
+            "options": {
+              "raw": {
+                "language": "json"
+              }
+            }
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Reverse Kinematics",
+        "request": {
+          "method": "POST",
+          "header": [],
+          "url": {
+            "raw": "http://localhost:8000/reverseK",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "reverseK"
+            ]
+          },
+          "description": "Calcule les angles de chaque moteur pour atteindre la position XYZ donnée (cinématique inverse).",
+          "body": {
+            "mode": "raw",
+            "raw": "{\n    \"x\": 100,\n    \"y\": 0,\n    \"z\": 200\n}",
+            "options": {
+              "raw": {
+                "language": "json"
+              }
+            }
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Set Motor Angle",
+        "request": {
+          "method": "POST",
+          "header": [],
+          "url": {
+            "raw": "http://localhost:8000/set-motor-angle",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "set-motor-angle"
+            ]
+          },
+          "description": "Définit l'angle d'un moteur donné (en degrés).",
+          "body": {
+            "mode": "raw",
+            "raw": "{\n    \"motor_id\": 1,\n    \"angle\": 90\n}",
+            "options": {
+              "raw": {
+                "language": "json"
+              }
+            }
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Set Sync Angles",
+        "request": {
+          "method": "POST",
+          "header": [],
+          "url": {
+            "raw": "http://localhost:8000/set-sync-angles",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "set-sync-angles"
+            ]
+          },
+          "description": "Définit simultanément les angles de tous les moteurs (en degrés).",
+          "body": {
+            "mode": "raw",
+            "raw": "{\n    \"angles\": [\n        0,\n        45,\n        90,\n        0\n    ]\n}",
+            "options": {
+              "raw": {
+                "language": "json"
+              }
+            }
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Get Motor Angle",
+        "request": {
+          "method": "GET",
+          "header": [],
+          "url": {
+            "raw": "http://localhost:8000/get-motor-angle?motor_id=1",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "get-motor-angle"
+            ],
+            "query": [
+              {
+                "key": "motor_id",
+                "value": "1"
+              }
+            ]
+          },
+          "description": "Retourne l'angle actuel d'un moteur spécifique (en degrés)."
+        },
+        "response": []
+      },
+      {
+        "name": "Calibrate Motor",
+        "request": {
+          "method": "POST",
+          "header": [],
+          "url": {
+            "raw": "http://localhost:8000/calibrate",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "calibrate"
+            ]
+          },
+          "description": "Calibre un moteur spécifique (définit sa position zéro actuelle).",
+          "body": {
+            "mode": "raw",
+            "raw": "{\n    \"motor_id\": 1\n}",
+            "options": {
+              "raw": {
+                "language": "json"
+              }
+            }
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Calibrate All (Sync)",
+        "request": {
+          "method": "POST",
+          "header": [],
+          "url": {
+            "raw": "http://localhost:8000/calibrate-sync",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "calibrate-sync"
+            ]
+          },
+          "description": "Calibre tous les moteurs de manière synchronisée.",
+          "body": {
+            "mode": "raw",
+            "raw": "{\n    \n}",
+            "options": {
+              "raw": {
+                "language": "json"
+              }
+            }
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Set Closed-Loop Mode",
+        "request": {
+          "method": "POST",
+          "header": [],
+          "url": {
+            "raw": "http://localhost:8000/set-closed-loop",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "set-closed-loop"
+            ]
+          },
+          "description": "Active ou désactive le mode asservi (closed-loop) d'un moteur donné.",
+          "body": {
+            "mode": "raw",
+            "raw": "{\n    \"motor_id\": 1,\n    \"enabled\": true\n}",
+            "options": {
+              "raw": {
+                "language": "json"
+              }
+            }
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Set Idle",
+        "request": {
+          "method": "POST",
+          "header": [],
+          "url": {
+            "raw": "http://localhost:8000/set-idle",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "set-idle"
+            ]
+          },
+          "description": "Met un moteur (ou tous) au repos (idle).",
+          "body": {
+            "mode": "raw",
+            "raw": "{\n    \"motor_id\": 1\n}",
+            "options": {
+              "raw": {
+                "language": "json"
+              }
+            }
+          }
+        },
+        "response": []
+      }
+    ]
+  }
+  

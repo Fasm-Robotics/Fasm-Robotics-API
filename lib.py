@@ -1,164 +1,269 @@
-import odrive
-from odrive.enums import (
-    AXIS_STATE_FULL_CALIBRATION_SEQUENCE,
-    AXIS_STATE_CLOSED_LOOP_CONTROL,
-    AXIS_STATE_IDLE,
-)
-import asyncio
+import math
+import serial
+import time
 from enum import Enum
+import os
+from ikpy.chain import Chain
 
 class MotorName(Enum):
     SH1 = "SH1"
     SH2 = "SH2"
     SH3 = "SH3"
+    EL1 = "EL1"  # AMT102V (lecture seule)
 
-class ODriveMotor:
-    def __init__(self, axis):
+GEAR_RATIO = 15.0
+
+# Fonctions de conversion placeholder (à adapter selon ton système)
+def angle_to_pos(angle: float) -> float:
+    return angle * 10  # Exemple de conversion angle → position moteur
+
+def pos_to_angle(pos: float) -> float:
+    return pos / 10  # Exemple de conversion position moteur → angle
+
+class ArduinoInterface:
+    """
+    Interface de communication série avec un Arduino pour contrôler plusieurs moteurs simultanément.
+    Permet l'envoi de commandes groupées ou individuelles pour calibrer, positionner, activer ou désactiver des moteurs.
+    """
+
+    def __init__(self, port="COM5", baudrate=115200):
         """
-        Initialize an ODrive motor instance for a given axis.
+        Initialise la connexion série avec l'Arduino.
+        :param port: Port série utilisé (ex: "COM5")
+        :param baudrate: Vitesse de communication (par défaut: 115200)
         """
-        self.axis = axis
-        self.angle = 0.0
-        self.size = 15
+        try:
+            self.serial = serial.Serial(port, baudrate, timeout=1)
+            time.sleep(2)  # Attente pour laisser le temps à l'Arduino de démarrer
+        except serial.SerialException as e:
+            raise ConnectionError(f"Impossible d'établir la connexion avec l'Arduino sur {port}: {e}")
 
-    def set_angle(self, angle):
-        """Set the target angle for the motor."""
-        if angle < -360 or angle > 360:
-            raise ValueError("Angle must be between -360 and 360 degrees.")
-        self.angle = float(angle)
-        self.axis.controller.input_pos = angle * (self.size / 360)
+    def send_command(self, command: str):
+        """
+        Envoie une commande brute à l'Arduino.
+        :param command: Chaîne de commande à envoyer
+        """
+        try:
+            self.serial.write((command + "\n").encode())
+        except serial.SerialException as e:
+            print(f"Erreur de communication série : {e}")
 
-    def set_velocity(self, velocity):
-        """Set the target velocity for the motor."""
-        self.axis.controller.input_vel = velocity
+    def calibrate(self, motor_angles: dict[MotorName, float]):
+        """
+        Calibre les moteurs spécifiés (hors EL1).
+        :param motor_angles: Dictionnaire {nom_moteur: angle}, angles ignorés ici
+        """
+        ids = [motor.value for motor in motor_angles if motor != MotorName.EL1]
+        if ids:
+            commande = "CALIBRATE_SYNC " + " ".join(ids)
+            self.send_command(commande)
+            print(commande)
+        else:
+            print("Aucun moteur valide à calibrer (EL1 est ignoré).")
 
-    def get_angle(self):
-        """Get the current angle of the motor."""
-        return self.angle
+    def set_angle(self, motor_angles: dict[MotorName, float]):
+        """
+        Définit les angles cibles des moteurs spécifiés.
+        :param motor_angles: Dictionnaire {nom_moteur: angle_en_degrés}
+        """
+        parts = []
+        for motor, angle in motor_angles.items():
+            if motor != MotorName.EL1:
+                parts.append(f"{motor.value} {angle_to_pos(angle):.2f}")
+        if parts:
+            commande = "SET_SYNC " + " ".join(parts)
+            self.send_command(commande)
+            print(commande)
+        else:
+            print("Aucun angle défini pour des moteurs valides.")
 
-    def get_velocity(self):
-        """Get the current velocity of the motor."""
-        return self.axis.encoder.vel_estimate
+    def set_closed_loop(self, motor_angles: dict[MotorName, float]):
+        """
+        Active le mode de contrôle en boucle fermée pour les moteurs (hors EL1).
+        :param motor_angles: Dictionnaire {nom_moteur: angle}, angles ignorés ici
+        """
+        ids = [motor.value[2] for motor in motor_angles if motor != MotorName.EL1]
+        if not ids:
+            print("Aucun moteur compatible avec le mode boucle fermée.")
+            return
+        for id_ in ids:
+            self.send_command(f"SET_CLOSED_LOOP {id_}")
+            print(f"SET_CLOSED_LOOP {id_}")
 
-    def calibrate(self):
-        """Run the full calibration sequence for the motor."""
-        self.axis.requested_state = AXIS_STATE_FULL_CALIBRATION_SEQUENCE
-        while self.axis.current_state != AXIS_STATE_IDLE:
-            pass
+    def set_idle(self, motor_angles: dict[MotorName, float]):
+        """
+        Désactive les moteurs (hors EL1) en les mettant à l'état IDLE.
+        :param motor_angles: Dictionnaire {nom_moteur: angle}, angles ignorés ici
+        """
+        ids = [motor.value[2] for motor in motor_angles if motor != MotorName.EL1]
+        if not ids:
+            print("Aucun moteur à désactiver (EL1 ignoré).")
+            return
+        for id_ in ids:
+            self.send_command(f"SET_IDLE {id_}")
+            print(f"SET_IDLE {id_}")
 
-    def set_closed_loop_control(self):
-        """Set the motor to closed-loop control mode."""
-        self.axis.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
+    def get_latest_position(self, motor_angles: dict[MotorName, float]) -> dict[MotorName, float]:
+        """
+        Récupère la dernière position connue pour chaque moteur fourni,
+        convertie en angle (en degrés).
+        
+        :param motor_angles: Dictionnaire {nom_moteur: valeur_placeholder}
+                            (valeurs ignorées ici, seul le nom est utilisé)
+        :return: Dictionnaire {nom_moteur: angle_en_degrés}, ou None pour les moteurs en erreur
+        """
+        positions = {}
+        for motor in motor_angles:
+            self.send_command(f"GET {motor.value}")
+            print(f"GET {motor.value}")
+            response = self.serial.readline().decode(errors="ignore").strip()
+            response = ''.join(c for c in response if c.isprintable())
 
-    def set_idle(self):
-        """Set the motor to idle mode."""
-        self.axis.requested_state = AXIS_STATE_IDLE
+            print(f"Réponse brute pour {motor.name} : {repr(response)}")
+            if response.startswith(f"{motor.value}:"):
+                try:
+                    pos = float(response.split(":")[1])
+                    angle = pos_to_angle(pos)
+                    positions[motor] = angle
+                except ValueError:
+                    print(f"Erreur de parsing de la position pour {motor.name} : {response}")
+                    positions[motor] = None
+            else:
+                print(f"Réponse inattendue pour {motor.name} : {repr(response)}")
+                positions[motor] = None
+        return positions
 
+
+    def get_errors(self):
+        """
+        Récupère la liste des erreurs actuelles des moteurs, si disponibles.
+        :return: Liste d'entiers représentant les erreurs, ou None en cas de problème
+        """
+        self.send_command("GET_ERRORS")
+        response = self.serial.readline().decode(errors="ignore").strip()
+        if response.startswith("ERRORS:"):
+            try:
+                return [int(error) for error in response.split(":")[1].split(",")]
+            except ValueError:
+                print(f"Erreur lors du parsing de la réponse : {response}")
+        else:
+            print(f"Réponse inattendue : {repr(response)}")
+        return None
 
 class Controller:
-    def __init__(self):
-        """Initialize the controller with an empty dictionary to store motors."""
-        self.motors = {}  # Dictionary to store motors by name
-        self.pos = {"x": 0, "y": 0, "z": 0}
-        self.ready = False
+    """
+    Contrôleur principal du bras robotisé.
+    Gère les angles des moteurs, la position XYZ cible, et communique avec l'Arduino.
+    """
 
-    async def add_motor(self, serial_number, name):
-        """
-        Asynchronously add a motor to the controller using its serial number.
+    def __init__(self, port="COM5", urdf_path=""):
+        self.arduino = ArduinoInterface(port)
+        self.chain = Chain.from_urdf_file(urdf_path)
+        self.pos = {"x": 0.0, "y": 0.0, "z": 0.0}
+        self.angles: dict[MotorName, float] = {
+            MotorName.SH1: 0.0,
+            MotorName.SH2: 0.0,
+            MotorName.SH3: 0.0,
+            MotorName.EL1: 0.0
+        }
 
-        Args:
-            serial_number (str): The serial number of the ODrive.
-            name (MotorName): A unique name from the MotorName enum.
+    def get_angle(self, motor: MotorName) -> float:
         """
-        if not isinstance(name, MotorName):
-            raise ValueError(f"Invalid motor name: {name}. Use MotorName Enum.")
+        Récupère l'angle actuel d'un moteur donné.
+        """
+        if motor not in self.angles:
+            raise ValueError(f"Nom de moteur invalide : {motor}.")
+        return self.angles[motor]
 
-        odrive_instance = await self._find_odrive_by_serial(serial_number)
-        
-        if odrive_instance:
-            self.motors[name] = ODriveMotor(odrive_instance.axis0)
-            print(f"Motor '{name.value}' added successfully.")
-        else:
-            print(f"Motor '{name.value}' could not be found.")
+    def get_angles(self) -> dict[MotorName, float]:
+        """
+        Récupère l'ensemble des angles des moteurs.
+        """
+        return self.angles.copy()
 
-    async def _find_odrive_by_serial(self, serial_number):
-        """Asynchronously find an ODrive by its serial number."""
-        print(f"Searching for ODrive with serial number: {serial_number}...")
-        while True:
-            try:
-                odrive_instance = odrive.find_any(serial_number=serial_number, timeout=5)
-                if odrive_instance:
-                    print(f"ODrive found: {odrive_instance.serial_number}")
-                    return odrive_instance
-            except Exception as e:
-                print(f"Error while searching for ODrive: {e}")
-            await asyncio.sleep(1)
+    def get_pos(self) -> dict[str, float]:
+        """
+        Retourne la dernière position cible atteinte (XYZ).
+        """
+        return self.pos.copy()
 
-    def get_motor(self, name):
-        """Retrieve a motor by its name."""
-        if not isinstance(name, MotorName):
-            raise ValueError(f"Invalid motor name: {name}. Use MotorName Enum.")
-        return self.motors.get(name)
-    
-    def update_pos(self, new_pos):
+    def goto(self, x: float, y: float, z: float):
         """
-        Move the motors to a specific position.
+        Calcule les angles nécessaires pour atteindre la position (x, y, z)
+        et commande les moteurs en conséquence.
         """
-        print(f"Moving motors to x={new_pos['x']}, y={new_pos['y']}, z={new_pos['z']}...")
-        self.pos = new_pos
-    
-    def set_pos(self, x: int, y: int, z: int):
-        """
-        Set the position of the motors.
-        """
-        self.update_pos({"x": x, "y": y, "z": z})
-        print(f"Position set to x={x}, y={y}, z={z}.")
+        if None in (x, y, z):
+            raise ValueError("Tous les paramètres x, y et z doivent être fournis.")
 
-    def get_pos(self):
-        """
-        Get the current position of the motors.
-        """
-        return self.pos
+        target = [x, y, z]
+        self.pos = {"x": x, "y": y, "z": z}
 
-    def reboot(self, name=None):
-        """Reboot a specific motor or all motors."""
-        if name:
-            if not isinstance(name, MotorName):
-                raise ValueError(f"Invalid motor name: {name}. Use MotorName Enum.")
-            motor = self.motors.get(name)
-            if motor:
-                motor.axis.odrive.reboot()
-                print(f"Motor '{name.value}' rebooted.")
-            else:
-                print(f"Motor '{name.value}' not found.")
-        else:
-            for motor_name, motor in self.motors.items():
-                motor.axis.odrive.reboot()
-                print(f"Motor '{motor_name.value}' rebooted.")
-            print("All motors rebooted.")
+        res = self.chain.inverse_kinematics(target)
+        joint_names = [joint.name for joint in self.chain.links[1:-1]]
+        joint_angles = {
+            MotorName[name]: float(angle) * 180 / math.pi
+            for name, angle in zip(joint_names, res[1:-1])
+        }
 
-    def exit(self):
+        # Mise à jour des moteurs articulés
+        self.set_motors_angles(joint_angles)
+
+        # Mise à jour de EL1 séparément si utile (position absolue sur Z)
+        self.angles[MotorName.EL1] = target[2]
+
+    def set_motor_angle(self, motor: MotorName, angle: float):
         """
-        Set the motors to idle.
+        Définit un angle en degrés pour un seul moteur (hors EL1).
         """
-        for motor in self.motors.values():
-            motor.set_idle()
-    
-    def init(self):
+        if motor == MotorName.EL1:
+            raise ValueError("EL1 est contrôlé en position absolue (pas en angle relatif).")
+
+        self.set_motors_angles({motor: angle})
+
+    def set_motors_angles(self, motor_angles: dict[MotorName, float]):
         """
-        Initialize all motors in closed-loop control mode.
+        Définit les angles (en degrés) de plusieurs moteurs simultanément.
         """
-        for motor in self.motors.values():
-            # check if error
-            if motor.error != 0:
-                motor.set_idle()
-                motor.error = 0
-                motor.set_closed_loop_control()
-                while motor.current_state != AXIS_STATE_IDLE:
-                    pass
-        for motor in self.motors.values():
-            motor.controller.config.control_mode = 3  # CTRL_MODE_POSITION_CONTROL
-            motor.set_closed_loop_control()
-        self.ready = True
-        self.get_motor(MotorName.SH3).set_angle(105)
-        self.get_motor(MotorName.SH1).set_angle(-22)
+        self.arduino.set_angle(motor_angles)
+        self.angles.update(motor_angles)
+
+    def reset(self):
+        """
+        Réinitialise les angles et la position du robot.
+        """
+        self.arduino.send_command("RESET")
+        self.angles = {motor: 0.0 for motor in self.angles}
+        self.pos = {"x": 0.0, "y": 0.0, "z": 0.0}
+
+    def calibrate_all(self):
+        """
+        Calibre automatiquement tous les moteurs sauf EL1.
+        """
+        moteurs = {
+            motor: 0.0 for motor in self.angles
+            if motor != MotorName.EL1
+        }
+        self.arduino.calibrate(moteurs)
+
+    def calibrate(self, motor: MotorName):
+        """
+        Calibre un seul moteur.
+        """
+        if motor == MotorName.EL1:
+            raise ValueError("EL1 ne supporte pas la calibration.")
+        self.arduino.calibrate({motor: 0.0})
+
+    def get_errors(self):
+        """
+        Récupère les erreurs de communication ou de statut moteur.
+        """
+        return self.arduino.get_errors()
+
+    def update_from_arduino(self):
+        """
+        Met à jour les angles internes depuis les valeurs réelles mesurées par les moteurs.
+        """
+        updated = self.arduino.get_latest_position(self.angles)
+        for motor, angle in updated.items():
+            if angle is not None:
+                self.angles[motor] = angle
