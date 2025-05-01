@@ -11,8 +11,6 @@ class MotorName(Enum):
     SH3 = "SH3"
     EL1 = "EL1"  # AMT102V (lecture seule)
 
-GEAR_RATIO = 15.0
-
 # Fonctions de conversion placeholder (à adapter selon ton système)
 def angle_to_pos(angle: float) -> float:
     return angle * 10  # Exemple de conversion angle → position moteur
@@ -69,7 +67,7 @@ class ArduinoInterface:
         parts = []
         for motor, angle in motor_angles.items():
             if motor != MotorName.EL1:
-                parts.append(f"{motor.value} {angle_to_pos(angle):.2f}")
+                parts.append(f"{motor.value} {(angle):.2f}")
         if parts:
             commande = "SET_SYNC " + " ".join(parts)
             self.send_command(commande)
@@ -123,7 +121,7 @@ class ArduinoInterface:
             if response.startswith(f"{motor.value}:"):
                 try:
                     pos = float(response.split(":")[1])
-                    angle = pos_to_angle(pos)
+                    angle = (pos)
                     positions[motor] = angle
                 except ValueError:
                     print(f"Erreur de parsing de la position pour {motor.name} : {response}")
