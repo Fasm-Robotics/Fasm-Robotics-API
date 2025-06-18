@@ -78,9 +78,20 @@ async def compute_inverse_kinematics(pos: PositionInput):
     if not is_connected:
         raise HTTPException(status_code=400, detail="Arduino non connecté.")
     try:
-        angles_deg = ctrl.goto(pos.x, pos.y, pos.z)
-        return {"status": "success", "angles_degrees": {k.name: v for k, v in angles_deg.items()}}
+        angles_deg = ctrl.goto(pos.x, pos.y, pos.z, True)
+        return {"status": "success"} + {k.name: v for k, v in angles_deg.items()}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/preview-reverseK")
+async def compute_inverse_kinematics(pos: PositionInput):
+    if not is_connected:
+        raise HTTPException(status_code=400, detail="Arduino non connecté.")
+    try:
+        angles_deg = ctrl.goto(pos.x, pos.y, pos.z, move=False)
+        return {"status": "success", **{k.name: v for k, v in angles_deg.items()}}
+    except Exception as e:
+        print(f"Erreur lors du calcul de la cinématique inverse : {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/set-motor-angle")
@@ -190,4 +201,4 @@ def reset_arm():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="localhost", port=5000)
+    uvicorn.run(app, host="localhost", port=8000)

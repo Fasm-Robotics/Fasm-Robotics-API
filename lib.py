@@ -157,7 +157,7 @@ class Controller:
     """
 
     def __init__(self, port="COM5", urdf_path=""):
-        self.arduino = ArduinoInterface(port)
+        # self.arduino = ArduinoInterface(port)
         self.chain = Chain.from_urdf_file(urdf_path)
         self.pos = {"x": 0.0, "y": 0.0, "z": 0.0}
         self.angles: dict[MotorName, float] = {
@@ -187,7 +187,7 @@ class Controller:
         """
         return self.pos.copy()
 
-    def goto(self, x: float, y: float, z: float):
+    def goto(self, x: float, y: float, z: float, move: bool = True) -> dict[MotorName, float]:
         """
         Calcule les angles nécessaires pour atteindre la position (x, y, z)
         et commande les moteurs en conséquence.
@@ -204,12 +204,13 @@ class Controller:
             MotorName[name]: float(angle) * 180 / math.pi
             for name, angle in zip(joint_names, res[1:-1])
         }
+        if move:
+            # Mise à jour des moteurs articulés
+            self.set_motors_angles(joint_angles)
+            # Mise à jour de EL1 séparément si utile (position absolue sur Z)
+            self.angles[MotorName.EL1] = target[2]
 
-        # Mise à jour des moteurs articulés
-        self.set_motors_angles(joint_angles)
-
-        # Mise à jour de EL1 séparément si utile (position absolue sur Z)
-        self.angles[MotorName.EL1] = target[2]
+        return joint_angles
 
     def set_motor_angle(self, motor: MotorName, angle: float):
         """
