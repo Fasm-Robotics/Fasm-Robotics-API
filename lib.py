@@ -157,7 +157,11 @@ class Controller:
     def __init__(self, port="COM5", urdf_path=""):
         # self.arduino = ArduinoInterface(port)
         self.chain = Chain.from_urdf_file(urdf_path)
-        self.pos = {"x": 0.0, "y": 0.0, "z": 0.0}
+        for i, link in enumerate(self.chain.links):
+            print(f"Link {i}: {link.name}, Bounds: {link.bounds}")
+            if link.name in ["Base link", "joint_5"]:
+                self.chain.active_links_mask[i] = False
+        self.pos = {"x": 1.2, "y": 0.3, "z": -1.0}
         self.angles: dict[MotorName, float] = {
             MotorName.SH1: 0.0,
             MotorName.SH2: 0.0,
