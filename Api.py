@@ -24,7 +24,7 @@ urdf_path = os.path.join(current_dir, "robotarm_corrected.urdf")
 
 # --- Modèles Pydantic ---
 class ConnectRequest(BaseModel):
-    port: str = "COM5"
+    port: str = "COM4"
     baudrate: int = 115200
 
 class SetMotorAngleRequest(BaseModel):
@@ -35,7 +35,7 @@ class SetSyncAnglesRequest(BaseModel):
     angles: Dict[str, float]
 
 class MotorStateRequest(BaseModel):
-    motor: str
+    motors: list[str]
 
 class CalibrateRequest(BaseModel):
     motor: str
@@ -166,10 +166,11 @@ async def set_closed_loop(req: MotorStateRequest):
     if not is_connected:
         raise HTTPException(status_code=400, detail="Arduino non connecté.")
     try:
-        if req.motor not in MotorName.__members__:
-            raise ValueError("Nom de moteur invalide.")
-        ctrl.arduino.set_closed_loop({MotorName[req.motor]: 0})
-        return {"status": "success", "message": f"{req.motor} en boucle fermée."}
+        for motor in req.motors:
+            if motor not in MotorName.__members__:
+                raise ValueError(f"Nom de moteur invalide : {motor}")
+            ctrl.arduino.set_closed_loop({MotorName[motor]: 0})
+        return {"status": "success", "message": f"{', '.join(req.motors)} en boucle fermée."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -178,10 +179,11 @@ async def set_idle(req: MotorStateRequest):
     if not is_connected:
         raise HTTPException(status_code=400, detail="Arduino non connecté.")
     try:
-        if req.motor not in MotorName.__members__:
-            raise ValueError("Nom de moteur invalide.")
-        ctrl.arduino.set_idle({MotorName[req.motor]: 0})
-        return {"status": "success", "message": f"{req.motor} mis en IDLE."}
+        for motor in req.motors:
+            if motor not in MotorName.__members__:
+                raise ValueError(f"Nom de moteur invalide : {motor}")
+            ctrl.arduino.set_idle({MotorName[motor]: 0})
+        return {"status": "success", "message": f"{', '.join(req.motors)} mis en IDLE."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

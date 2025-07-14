@@ -154,8 +154,8 @@ class Controller:
     Gère les angles des moteurs, la position XYZ cible, et communique avec l'Arduino.
     """
 
-    def __init__(self, port="COM5", urdf_path=""):
-        # self.arduino = ArduinoInterface(port)
+    def __init__(self, port="COM4", urdf_path=""):
+        self.arduino = ArduinoInterface(port)
         self.chain = Chain.from_urdf_file(urdf_path)
         for i, link in enumerate(self.chain.links):
             print(f"Link {i}: {link.name}, Bounds: {link.bounds}")
